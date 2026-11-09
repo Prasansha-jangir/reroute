@@ -1,0 +1,70 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: reroute
+  labels:
+    pod-security.kubernetes.io/enforce: restricted   # Pod Security Standards: hardest profile
+---
+# Non-secret configuration shared by all services. Secrets come from Azure Key Vault via the CSI driver (prod overlay).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: reroute-common
+data:
+  ASPNETCORE_ENVIRONMENT: Production
+  Auth__Authority: https://login.microsoftonline.com/REPLACE_TENANT/v2.0
+  Auth__Audience: api://reroute
+  Kafka__BootstrapServers: REPLACE.servicebus.windows.net:9093
+  Kafka__SecurityProtocol: SaslSsl
+  Kafka__SaslMechanism: Plain
+  Kafka__SaslUsername: $ConnectionString
+  Messaging__Transport: AzureServiceBus
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector.observability:4317
+  Qdrant__Host: qdrant
+  Services__Claims: http://claims-api:8080
+  ReverseProxy__Clusters__claims__Destinations__d1__Address: http://claims-api:8080
+  ReverseProxy__Clusters__disruption__Destinations__d1__Address: http://disruption-api:8080
+  ReverseProxy__Clusters__copilot__Destinations__d1__Address: http://copilot-api:8080
+  ReverseProxy__Clusters__search__Destinations__d1__Address: http://search-api:8080
+  ReverseProxy__Clusters__notification__Destinations__d1__Address: http://notification-api:8080
+---
+# Runs forward-only SQL migrations BEFORE the new version rolls out (CD applies it and waits for completion).
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: claims-migrations
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+spec:
+  backoffLimit: 2
+  ttlSecondsAfterFinished: 3600
+  template:
+    spec:
+      serviceAccountName: claims-api
+      restartPolicy: Never
+      securityContext: { runAsNonRoot: true, seccompProfile: { type: RuntimeDefault } }
+      containers:
+        - name: migrate
+          image: reroute/claims-api:latest
+          args: ["--migrate-only"]
+          env:
+            - name: ConnectionStrings__ClaimsDb
+              valueFrom: { secretKeyRef: { name: claims-secrets, key: claims-db } }
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: ["ALL"] } }
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: reroute
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"   # SignalR WebSockets + SSE streams
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: api.reroute.example
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend: { service: { name: gateway, port: { number: 8080 } } }

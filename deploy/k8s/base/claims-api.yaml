@@ -1,0 +1,109 @@
+# Reference manifest — every production-grade setting is annotated. Other services follow the same shape.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: claims-api
+  labels: { app.kubernetes.io/name: claims-api, app.kubernetes.io/part-of: reroute }
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxSurge: 1, maxUnavailable: 0 }   # never drop below desired capacity during rollout
+  selector:
+    matchLabels: { app.kubernetes.io/name: claims-api }
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: claims-api
+        app.kubernetes.io/part-of: reroute
+        azure.workload.identity/use: "true"            # pod gets a federated token for its managed identity
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: /metrics
+    spec:
+      serviceAccountName: claims-api
+      automountServiceAccountToken: true
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile: { type: RuntimeDefault }
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector: { matchLabels: { app.kubernetes.io/name: claims-api } }
+      containers:
+        - name: claims-api
+          image: reroute/claims-api:latest               # overlays pin to ACR image digests
+          ports: [{ name: http, containerPort: 8080 }]
+          envFrom:
+            - configMapRef: { name: reroute-common }
+          env:
+            - { name: OTEL_SERVICE_NAME, value: claims-api }
+            - { name: Database__MigrateOnStartup, value: "false" }   # the migrations Job does it
+            - name: ConnectionStrings__ClaimsDb
+              valueFrom: { secretKeyRef: { name: claims-secrets, key: claims-db } }
+          resources:
+            requests: { cpu: 100m, memory: 192Mi }
+            limits: { memory: 384Mi }                      # no CPU limit → no CFS throttling latency spikes
+          startupProbe:
+            httpGet: { path: /health/startup, port: http }
+            failureThreshold: 30
+            periodSeconds: 2
+          readinessProbe:                                   # checks dependencies → removed from load balancing if DB is down
+            httpGet: { path: /health/ready, port: http }
+            periodSeconds: 5
+          livenessProbe:                                    # process only → a DB blip never restarts pods
+            httpGet: { path: /health/live, port: http }
+            periodSeconds: 10
+            failureThreshold: 3
+          lifecycle:
+            preStop: { sleep: { seconds: 5 } }              # let the ingress stop routing before SIGTERM
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - { name: tmp, emptyDir: {} }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: claims-api
+  labels: { app.kubernetes.io/name: claims-api }
+spec:
+  selector: { app.kubernetes.io/name: claims-api }
+  ports: [{ name: http, port: 8080, targetPort: http }]
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: claims-api
+  annotations:
+    azure.workload.identity/client-id: "${CLAIMS_IDENTITY_CLIENT_ID}"   # replaced per environment
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: claims-api
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: claims-api }
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: 70 } }
+  behavior:
+    scaleDown: { stabilizationWindowSeconds: 300 }        # avoid flapping
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: claims-api
+spec:
+  minAvailable: 1
+  selector: { matchLabels: { app.kubernetes.io/name: claims-api } }

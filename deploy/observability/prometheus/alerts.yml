@@ -1,0 +1,46 @@
+groups:
+  - name: reroute-slos
+    rules:
+      # SLO: 99.9% of claims API requests succeed (non-5xx) over 30 days → error budget 0.1%.
+      # Multi-window, multi-burn-rate alert (Google SRE workbook): page only when budget burns fast in BOTH windows.
+      - record: reroute:claims_error_ratio:rate5m
+        expr: |
+          sum(rate(http_server_request_duration_seconds_count{job="reroute-services", instance=~"claims-api.*", http_response_status_code=~"5.."}[5m]))
+          / sum(rate(http_server_request_duration_seconds_count{job="reroute-services", instance=~"claims-api.*"}[5m]))
+      - record: reroute:claims_error_ratio:rate1h
+        expr: |
+          sum(rate(http_server_request_duration_seconds_count{job="reroute-services", instance=~"claims-api.*", http_response_status_code=~"5.."}[1h]))
+          / sum(rate(http_server_request_duration_seconds_count{job="reroute-services", instance=~"claims-api.*"}[1h]))
+      - alert: ClaimsApiErrorBudgetFastBurn
+        expr: reroute:claims_error_ratio:rate1h > (14.4 * 0.001) and reroute:claims_error_ratio:rate5m > (14.4 * 0.001)
+        for: 2m
+        labels: { severity: page }
+        annotations:
+          summary: Claims API is burning its 30-day error budget 14x too fast
+          runbook: docs/runbooks/claims-api-errors.md
+
+      - alert: ClaimsApiLatencyP99High
+        expr: |
+          histogram_quantile(0.99, sum by (le) (rate(http_server_request_duration_seconds_bucket{instance=~"claims-api.*"}[5m]))) > 0.3
+        for: 10m
+        labels: { severity: ticket }
+        annotations: { summary: Claims API p99 latency above 300 ms }
+
+  - name: reroute-pipeline
+    rules:
+      - alert: OutboxPublishingSlow
+        expr: histogram_quantile(0.95, sum by (le) (rate(reroute_outbox_publish_lag_milliseconds_bucket[5m]))) > 60000
+        for: 5m
+        labels: { severity: page }
+        annotations: { summary: "Outbox → Kafka lag p95 above 60 s (is Kafka down?)" }
+
+      - alert: MessagesDeadLettered
+        expr: sum by (topic) (increase(reroute_messages_consumed_total{outcome="dead_lettered"}[15m])) > 0
+        labels: { severity: ticket }
+        annotations: { summary: "Messages dead-lettered on {{ $labels.topic }}" }
+
+      - alert: DisruptionDetectionSlow
+        expr: histogram_quantile(0.95, sum by (le) (rate(reroute_disruption_detection_latency_milliseconds_bucket[5m]))) > 5000
+        for: 10m
+        labels: { severity: ticket }
+        annotations: { summary: Disruption detection p95 above 5 s }

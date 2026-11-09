@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\Reroute.Claims.Domain\Reroute.Claims.Domain.csproj" />
+    <ProjectReference Include="..\..\..\BuildingBlocks\Reroute.BuildingBlocks\Reroute.BuildingBlocks.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Reroute.Claims.UnitTests" />
+  </ItemGroup>
+</Project>

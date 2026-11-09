@@ -1,0 +1,72 @@
+{
+  "realm": "reroute",
+  "enabled": true,
+  "registrationAllowed": true,
+  "loginWithEmailAllowed": true,
+  "accessTokenLifespan": 300,
+  "ssoSessionIdleTimeout": 28800,
+  "roles": {
+    "realm": [
+      { "name": "traveller", "description": "Regular user" },
+      { "name": "ops", "description": "Operations: airline decisions, DLQ replay, simulations" }
+    ]
+  },
+  "defaultRoles": ["traveller"],
+  "clients": [
+    {
+      "clientId": "reroute-bff",
+      "name": "Reroute BFF (gateway)",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "dev-only-bff-secret",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "implicitFlowEnabled": false,
+      "redirectUris": ["http://localhost:5173/signin-oidc", "http://localhost:8080/signin-oidc"],
+      "webOrigins": ["http://localhost:5173", "http://localhost:8080"],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:5173/*##http://localhost:8080/*"
+      },
+      "defaultClientScopes": ["profile", "email", "roles", "web-origins"],
+      "optionalClientScopes": ["offline_access"],
+      "protocolMappers": [
+        {
+          "name": "audience-reroute-api",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": { "included.custom.audience": "reroute-api", "access.token.claim": "true", "id.token.claim": "false" }
+        },
+        {
+          "name": "flat-realm-roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "config": { "claim.name": "roles", "multivalued": "true", "access.token.claim": "true", "id.token.claim": "true", "userinfo.token.claim": "true", "jsonType.label": "String" }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "traveller",
+      "email": "traveller@reroute.test",
+      "firstName": "Demo",
+      "lastName": "Traveller",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [{ "type": "password", "value": "traveller", "temporary": false }],
+      "realmRoles": ["traveller", "ops"]
+    },
+    {
+      "username": "alice",
+      "email": "alice@reroute.test",
+      "firstName": "Alice",
+      "lastName": "Example",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [{ "type": "password", "value": "alice", "temporary": false }],
+      "realmRoles": ["traveller"]
+    }
+  ]
+}

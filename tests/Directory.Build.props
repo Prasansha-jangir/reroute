@@ -1,0 +1,13 @@
+<Project>
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
+  <PropertyGroup>
+    <!-- Test naming convention uses underscores (Given_When_Then); async suffix not required. -->
+    <NoWarn>$(NoWarn);CA1707;CA2234;CA1001;CA2000;CA1861</NoWarn>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Microsoft.Testing.Platform extensions: TRX reports and Cobertura coverage for CI. -->
+    <PackageReference Include="Microsoft.Testing.Extensions.TrxReport" />
+    <PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" />
+  </ItemGroup>
+</Project>

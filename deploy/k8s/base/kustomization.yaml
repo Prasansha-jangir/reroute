@@ -1,0 +1,14 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: reroute
+resources:
+  - common.yaml
+  - network-policies.yaml
+  - gateway.yaml
+  - claims-api.yaml
+  - disruption-api.yaml
+  - notification-api.yaml
+  - copilot-api.yaml
+  - search-api.yaml
+labels:
+  - pairs: { app.kubernetes.io/managed-by: kustomize }

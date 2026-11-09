@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Pure domain: references only the SharedKernel. Enforced by tests/Reroute.ArchitectureTests. -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\BuildingBlocks\Reroute.SharedKernel\Reroute.SharedKernel.csproj" />
+  </ItemGroup>
+</Project>
