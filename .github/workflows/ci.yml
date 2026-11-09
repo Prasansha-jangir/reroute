@@ -24,8 +24,8 @@ jobs:
       web: ${{ steps.filter.outputs.web }}
       infra: ${{ steps.filter.outputs.infra }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: dorny/paths-filter@v3
+      - uses: actions/checkout@v7
+      - uses: dorny/paths-filter@v4
         id: filter
         with:
           filters: |
@@ -41,8 +41,8 @@ jobs:
       contents: read
       checks: write          # test report annotations
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
         with:
           global-json-file: global.json
           cache: true
@@ -62,13 +62,13 @@ jobs:
       # GitHub-hosted Ubuntu runners ship Docker → Testcontainers starts a REAL SQL Server.
       - name: Integration tests (Testcontainers)
         run: dotnet test --project tests/Reroute.Claims.IntegrationTests -c Release --no-build --report-trx --results-directory TestResults
-      - uses: dorny/test-reporter@v1
+      - uses: dorny/test-reporter@v3
         if: always()
         with:
           name: .NET tests
           path: TestResults/**/*.trx
           reporter: dotnet-trx
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with: { name: dotnet-test-results, path: TestResults }
 
@@ -78,15 +78,15 @@ jobs:
     runs-on: ubuntu-latest
     defaults: { run: { working-directory: web } }
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with: { node-version: 24, cache: npm, cache-dependency-path: web/package-lock.json }
       - run: npm ci --no-audit --no-fund
       - run: npm run lint
       - run: npm run typecheck
       - run: npx vitest run --coverage.enabled=false
       - run: npm run build
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with: { name: web-dist, path: web/dist }
 
   infra:
@@ -94,7 +94,7 @@ jobs:
     if: needs.changes.outputs.infra == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Validate Bicep
         run: az bicep build --file infra/azure/main.bicep --stdout > /dev/null
       - name: Validate Kubernetes manifests (kustomize + kubeconform)
@@ -112,18 +112,20 @@ jobs:
       contents: read
       security-events: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: github/codeql-action/init@v3
+      - uses: actions/checkout@v7
+      - uses: github/codeql-action/init@v4
         with: { languages: 'csharp, javascript-typescript', build-mode: none }
-      - uses: github/codeql-action/analyze@v3
-      - uses: gitleaks/gitleaks-action@v2
-        env: { GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}' }
+      - uses: github/codeql-action/analyze@v4
+      # Gitleaks CLI (pinned image) scans the checked-out tree. Unlike gitleaks-action it needs no
+      # PR-diff API call, so it behaves the same on pushes and on Dependabot PRs.
+      - name: Secret scan (gitleaks)
+        run: docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:v8.30.1 dir /repo --redact --no-banner
 
   dependency-review:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     permissions: { contents: read, pull-requests: write }
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/dependency-review-action@v4
+      - uses: actions/checkout@v7
+      - uses: actions/dependency-review-action@v5.0.0
         with: { fail-on-severity: high }

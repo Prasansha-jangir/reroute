@@ -12,10 +12,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Start full stack
         run: cp .env.example .env && docker compose up -d --build --wait
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with: { node-version: 24, cache: npm, cache-dependency-path: web/package-lock.json }
       - name: Playwright
         working-directory: web
@@ -24,18 +24,18 @@ jobs:
           npx playwright install --with-deps chromium
           (npm run dev &) && npx wait-on http://localhost:5173
           npx playwright test
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: failure()
         with: { name: playwright-report, path: web/playwright-report }
 
+      - uses: grafana/setup-k6-action@v1
       - name: Load test (k6) — publish numbers in the job summary
-        uses: grafana/k6-action@v0.3.1
-        with: { filename: tests/load/claims-read.js }
+        run: k6 run tests/load/claims-read.js
         env: { BASE_URL: 'http://localhost:5104' }
 
       - name: Collect logs on failure
         if: failure()
         run: docker compose logs --no-color > compose.log
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: failure()
         with: { name: compose-logs, path: compose.log }

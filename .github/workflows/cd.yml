@@ -21,6 +21,8 @@ env:
 
 jobs:
   images:
+    # Skipped (not failed) until Azure is wired up: set repo variable AZURE_CLIENT_ID (+ the others in docs/12-cicd.md).
+    if: vars.AZURE_CLIENT_ID != ''
     runs-on: ubuntu-latest
     strategy:
       fail-fast: true
@@ -35,17 +37,17 @@ jobs:
     outputs:
       tag: ${{ github.sha }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: azure/login@v2
+      - uses: actions/checkout@v7
+      - uses: azure/login@v3
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
       - run: az acr login --name "${ACR%%.*}"
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
       - name: Build & push (immutable SHA tag)
         id: build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ${{ matrix.service.dockerfile }}
@@ -59,7 +61,7 @@ jobs:
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
       - name: Scan image (fail on CRITICAL)
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ env.ACR }}/${{ matrix.service.name }}:${{ github.sha }}
           severity: CRITICAL
@@ -71,13 +73,13 @@ jobs:
     runs-on: ubuntu-latest
     environment: dev
     steps:
-      - uses: actions/checkout@v4
-      - uses: azure/login@v2
+      - uses: actions/checkout@v7
+      - uses: azure/login@v3
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-      - uses: azure/aks-set-context@v4
+      - uses: azure/aks-set-context@v5
         with: { resource-group: '${{ env.AKS_RG }}', cluster-name: '${{ env.AKS_NAME }}' }
       - name: Pin images by digest (build once, deploy many)
         working-directory: deploy/k8s/overlays/prod
@@ -109,12 +111,12 @@ jobs:
     runs-on: ubuntu-latest
     environment: dev
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with: { node-version: 24, cache: npm, cache-dependency-path: web/package-lock.json }
       - run: npm ci --no-audit --no-fund && npm run build
         working-directory: web
-      - uses: azure/login@v2
+      - uses: azure/login@v3
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
