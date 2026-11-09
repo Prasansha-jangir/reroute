@@ -62,7 +62,7 @@ jobs:
       # GitHub-hosted Ubuntu runners ship Docker → Testcontainers starts a REAL SQL Server.
       - name: Integration tests (Testcontainers)
         run: dotnet test --project tests/Reroute.Claims.IntegrationTests -c Release --no-build --report-trx --results-directory TestResults
-      - uses: dorny/test-reporter@v1
+      - uses: dorny/test-reporter@v3
         if: always()
         with:
           name: .NET tests
