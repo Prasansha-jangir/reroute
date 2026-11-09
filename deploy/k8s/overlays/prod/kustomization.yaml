@@ -1,0 +1,24 @@
+# AKS. Images are pinned by DIGEST by the CD pipeline (`kustomize edit set image ...@sha256:...`) —
+# the exact bytes tested in dev are what reach prod.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../base
+  - secret-provider.yaml
+images:
+  - { name: reroute/gateway, newName: rerouteacr.azurecr.io/gateway }
+  - { name: reroute/claims-api, newName: rerouteacr.azurecr.io/claims-api }
+  - { name: reroute/disruption-api, newName: rerouteacr.azurecr.io/disruption-api }
+  - { name: reroute/notification-api, newName: rerouteacr.azurecr.io/notification-api }
+  - { name: reroute/copilot-api, newName: rerouteacr.azurecr.io/copilot-api }
+  - { name: reroute/search-api, newName: rerouteacr.azurecr.io/search-api }
+patches:
+  # Mount Key Vault secrets (synced into K8s Secrets by the CSI driver) into the claims pod.
+  - target: { kind: Deployment, name: claims-api }
+    patch: |-
+      - op: add
+        path: /spec/template/spec/volumes/-
+        value: { name: kv, csi: { driver: secrets-store.csi.k8s.io, readOnly: true, volumeAttributes: { secretProviderClass: reroute-kv } } }
+      - op: add
+        path: /spec/template/spec/containers/0/volumeMounts/-
+        value: { name: kv, mountPath: /mnt/secrets, readOnly: true }

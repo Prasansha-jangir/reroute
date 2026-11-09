@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: search-api
+  labels: { app.kubernetes.io/name: search-api, app.kubernetes.io/part-of: reroute }
+spec:
+  replicas: 2
+  strategy: { type: RollingUpdate, rollingUpdate: { maxSurge: 1, maxUnavailable: 0 } }
+  selector: { matchLabels: { app.kubernetes.io/name: search-api } }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: search-api, app.kubernetes.io/part-of: reroute, azure.workload.identity/use: "true" }
+      annotations: { prometheus.io/scrape: "true", prometheus.io/port: "8080", prometheus.io/path: /metrics }
+    spec:
+      serviceAccountName: search-api
+      terminationGracePeriodSeconds: 30
+      securityContext: { runAsNonRoot: true, seccompProfile: { type: RuntimeDefault } }
+      containers:
+        - name: search-api
+          image: reroute/search-api:latest
+          ports: [{ name: http, containerPort: 8080 }]
+          envFrom:
+            - configMapRef: { name: reroute-common }
+            - secretRef: { name: search-api-secrets, optional: true }
+          env:
+            - { name: OTEL_SERVICE_NAME, value: search-api }
+          resources:
+            requests: { cpu: 100m, memory: 160Mi }
+            limits: { memory: 384Mi }
+          startupProbe: { httpGet: { path: /health/startup, port: http }, failureThreshold: 30, periodSeconds: 2 }
+          readinessProbe: { httpGet: { path: /health/ready, port: http }, periodSeconds: 5 }
+          livenessProbe: { httpGet: { path: /health/live, port: http }, periodSeconds: 10 }
+          lifecycle: { preStop: { sleep: { seconds: 5 } } }
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: ["ALL"] } }
+          volumeMounts: [{ name: tmp, mountPath: /tmp }]
+      volumes: [{ name: tmp, emptyDir: {} }]
+---
+apiVersion: v1
+kind: Service
+metadata: { name: search-api, labels: { app.kubernetes.io/name: search-api } }
+spec:
+  selector: { app.kubernetes.io/name: search-api }
+  ports: [{ name: http, port: 8080, targetPort: http }]
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata: { name: search-api }
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: { name: search-api }
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: search-api }
+  minReplicas: 2
+  maxReplicas: 8
+  metrics: [{ type: Resource, resource: { name: cpu, target: { type: Utilization, averageUtilization: 70 } } }]
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: { name: search-api }
+spec:
+  minAvailable: 1
+  selector: { matchLabels: { app.kubernetes.io/name: search-api } }

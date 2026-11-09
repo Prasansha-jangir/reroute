@@ -1,0 +1,38 @@
+<Solution>
+  <Folder Name="/src/" />
+  <Folder Name="/src/BuildingBlocks/">
+    <Project Path="src/BuildingBlocks/Reroute.BuildingBlocks.AI/Reroute.BuildingBlocks.AI.csproj" />
+    <Project Path="src/BuildingBlocks/Reroute.BuildingBlocks/Reroute.BuildingBlocks.csproj" />
+    <Project Path="src/BuildingBlocks/Reroute.Contracts/Reroute.Contracts.csproj" />
+    <Project Path="src/BuildingBlocks/Reroute.SharedKernel/Reroute.SharedKernel.csproj" />
+  </Folder>
+  <Folder Name="/src/Gateway/">
+    <Project Path="src/Gateway/Reroute.Gateway/Reroute.Gateway.csproj" />
+  </Folder>
+  <Folder Name="/src/Services/" />
+  <Folder Name="/src/Services/Claims/">
+    <Project Path="src/Services/Claims/Reroute.Claims.Api/Reroute.Claims.Api.csproj" />
+    <Project Path="src/Services/Claims/Reroute.Claims.Application/Reroute.Claims.Application.csproj" />
+    <Project Path="src/Services/Claims/Reroute.Claims.Domain/Reroute.Claims.Domain.csproj" />
+    <Project Path="src/Services/Claims/Reroute.Claims.Infrastructure/Reroute.Claims.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/src/Services/Copilot/">
+    <Project Path="src/Services/Copilot/Reroute.Copilot.Api/Reroute.Copilot.Api.csproj" />
+  </Folder>
+  <Folder Name="/src/Services/Disruption/">
+    <Project Path="src/Services/Disruption/Reroute.Disruption.Api/Reroute.Disruption.Api.csproj" />
+  </Folder>
+  <Folder Name="/src/Services/Notification/">
+    <Project Path="src/Services/Notification/Reroute.Notification.Api/Reroute.Notification.Api.csproj" />
+  </Folder>
+  <Folder Name="/src/Services/Search/">
+    <Project Path="src/Services/Search/Reroute.Search.Api/Reroute.Search.Api.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Reroute.ArchitectureTests/Reroute.ArchitectureTests.csproj" />
+    <Project Path="tests/Reroute.Claims.IntegrationTests/Reroute.Claims.IntegrationTests.csproj" />
+    <Project Path="tests/Reroute.Claims.UnitTests/Reroute.Claims.UnitTests.csproj" />
+    <Project Path="tests/Reroute.Copilot.UnitTests/Reroute.Copilot.UnitTests.csproj" />
+    <Project Path="tests/Reroute.Disruption.UnitTests/Reroute.Disruption.UnitTests.csproj" />
+  </Folder>
+</Solution>

@@ -1,0 +1,3 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- DDD primitives. Deliberately ZERO package references: the domain must not depend on infrastructure. -->
+</Project>

@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Integration-event and command contracts shared between services.
+    Only plain records — no behaviour, no dependencies. Versioned by topic name (.v1) / type name.
+  -->
+</Project>

@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: disruption-api
+  labels: { app.kubernetes.io/name: disruption-api, app.kubernetes.io/part-of: reroute }
+spec:
+  replicas: 2
+  strategy: { type: RollingUpdate, rollingUpdate: { maxSurge: 1, maxUnavailable: 0 } }
+  selector: { matchLabels: { app.kubernetes.io/name: disruption-api } }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: disruption-api, app.kubernetes.io/part-of: reroute, azure.workload.identity/use: "true" }
+      annotations: { prometheus.io/scrape: "true", prometheus.io/port: "8080", prometheus.io/path: /metrics }
+    spec:
+      serviceAccountName: disruption-api
+      terminationGracePeriodSeconds: 30
+      securityContext: { runAsNonRoot: true, seccompProfile: { type: RuntimeDefault } }
+      containers:
+        - name: disruption-api
+          image: reroute/disruption-api:latest
+          ports: [{ name: http, containerPort: 8080 }]
+          envFrom:
+            - configMapRef: { name: reroute-common }
+            - secretRef: { name: disruption-api-secrets, optional: true }
+          env:
+            - { name: OTEL_SERVICE_NAME, value: disruption-api }
+          resources:
+            requests: { cpu: 100m, memory: 160Mi }
+            limits: { memory: 384Mi }
+          startupProbe: { httpGet: { path: /health/startup, port: http }, failureThreshold: 30, periodSeconds: 2 }
+          readinessProbe: { httpGet: { path: /health/ready, port: http }, periodSeconds: 5 }
+          livenessProbe: { httpGet: { path: /health/live, port: http }, periodSeconds: 10 }
+          lifecycle: { preStop: { sleep: { seconds: 5 } } }
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: ["ALL"] } }
+          volumeMounts: [{ name: tmp, mountPath: /tmp }]
+      volumes: [{ name: tmp, emptyDir: {} }]
+---
+apiVersion: v1
+kind: Service
+metadata: { name: disruption-api, labels: { app.kubernetes.io/name: disruption-api } }
+spec:
+  selector: { app.kubernetes.io/name: disruption-api }
+  ports: [{ name: http, port: 8080, targetPort: http }]
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata: { name: disruption-api }
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: { name: disruption-api }
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: disruption-api }
+  minReplicas: 2
+  maxReplicas: 8
+  metrics: [{ type: Resource, resource: { name: cpu, target: { type: Utilization, averageUtilization: 70 } } }]
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: { name: disruption-api }
+spec:
+  minAvailable: 1
+  selector: { matchLabels: { app.kubernetes.io/name: disruption-api } }

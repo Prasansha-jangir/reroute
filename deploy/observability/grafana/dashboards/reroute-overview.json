@@ -1,0 +1,45 @@
+{
+  "title": "Reroute — Service & Pipeline Overview",
+  "uid": "reroute-overview",
+  "schemaVersion": 39,
+  "time": { "from": "now-1h", "to": "now" },
+  "refresh": "10s",
+  "panels": [
+    {
+      "type": "timeseries", "title": "Request rate by service (RED: Rate)", "gridPos": { "x": 0, "y": 0, "w": 8, "h": 8 },
+      "targets": [{ "expr": "sum by (service_name) (rate(http_server_request_duration_seconds_count[1m]))", "legendFormat": "{{service_name}}" }]
+    },
+    {
+      "type": "timeseries", "title": "5xx ratio by service (RED: Errors)", "gridPos": { "x": 8, "y": 0, "w": 8, "h": 8 },
+      "fieldConfig": { "defaults": { "unit": "percentunit" } },
+      "targets": [{ "expr": "sum by (service_name) (rate(http_server_request_duration_seconds_count{http_response_status_code=~\"5..\"}[5m])) / sum by (service_name) (rate(http_server_request_duration_seconds_count[5m]))", "legendFormat": "{{service_name}}" }]
+    },
+    {
+      "type": "timeseries", "title": "p99 latency by service (RED: Duration)", "gridPos": { "x": 16, "y": 0, "w": 8, "h": 8 },
+      "fieldConfig": { "defaults": { "unit": "s" } },
+      "targets": [{ "expr": "histogram_quantile(0.99, sum by (le, service_name) (rate(http_server_request_duration_seconds_bucket[5m])))", "legendFormat": "{{service_name}}", "exemplar": true }]
+    },
+    {
+      "type": "timeseries", "title": "Disruptions detected / min", "gridPos": { "x": 0, "y": 8, "w": 8, "h": 8 },
+      "targets": [{ "expr": "sum by (type) (rate(reroute_disruptions_detected_total[5m])) * 60", "legendFormat": "{{type}}" }]
+    },
+    {
+      "type": "timeseries", "title": "Disruption detection latency p95", "gridPos": { "x": 8, "y": 8, "w": 8, "h": 8 },
+      "fieldConfig": { "defaults": { "unit": "ms" } },
+      "targets": [{ "expr": "histogram_quantile(0.95, sum by (le) (rate(reroute_disruption_detection_latency_milliseconds_bucket[5m])))" }]
+    },
+    {
+      "type": "timeseries", "title": "Outbox publish lag p95", "gridPos": { "x": 16, "y": 8, "w": 8, "h": 8 },
+      "fieldConfig": { "defaults": { "unit": "ms" } },
+      "targets": [{ "expr": "histogram_quantile(0.95, sum by (le) (rate(reroute_outbox_publish_lag_milliseconds_bucket[5m])))" }]
+    },
+    {
+      "type": "timeseries", "title": "Messages consumed by outcome", "gridPos": { "x": 0, "y": 16, "w": 12, "h": 8 },
+      "targets": [{ "expr": "sum by (topic, outcome) (rate(reroute_messages_consumed_total[5m]))", "legendFormat": "{{topic}} {{outcome}}" }]
+    },
+    {
+      "type": "timeseries", "title": "LLM tokens / min", "gridPos": { "x": 12, "y": 16, "w": 12, "h": 8 },
+      "targets": [{ "expr": "sum by (gen_ai_token_type) (rate(gen_ai_client_token_usage_sum[5m])) * 60", "legendFormat": "{{gen_ai_token_type}}" }]
+    }
+  ]
+}

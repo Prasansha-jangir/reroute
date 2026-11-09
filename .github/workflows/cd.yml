@@ -1,0 +1,132 @@
+name: CD
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write      # OIDC federation to Azure — no stored client secrets
+  packages: read
+
+concurrency:
+  group: cd-${{ github.ref }}
+  cancel-in-progress: false   # never cancel a deployment half-way
+
+env:
+  ACR: ${{ vars.ACR_LOGIN_SERVER }}        # e.g. rerouteprodxyz.azurecr.io
+  AKS_RG: ${{ vars.AKS_RESOURCE_GROUP }}
+  AKS_NAME: ${{ vars.AKS_NAME }}
+
+jobs:
+  images:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true
+      matrix:
+        service:
+          - { name: gateway, dockerfile: src/Gateway/Reroute.Gateway/Dockerfile }
+          - { name: claims-api, dockerfile: src/Services/Claims/Reroute.Claims.Api/Dockerfile }
+          - { name: disruption-api, dockerfile: src/Services/Disruption/Reroute.Disruption.Api/Dockerfile }
+          - { name: notification-api, dockerfile: src/Services/Notification/Reroute.Notification.Api/Dockerfile }
+          - { name: copilot-api, dockerfile: src/Services/Copilot/Reroute.Copilot.Api/Dockerfile }
+          - { name: search-api, dockerfile: src/Services/Search/Reroute.Search.Api/Dockerfile }
+    outputs:
+      tag: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - run: az acr login --name "${ACR%%.*}"
+      - uses: docker/setup-buildx-action@v3
+      - name: Build & push (immutable SHA tag)
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.service.dockerfile }}
+          push: true
+          tags: ${{ env.ACR }}/${{ matrix.service.name }}:${{ github.sha }}
+          cache-from: type=gha,scope=${{ matrix.service.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service.name }}
+          provenance: true
+          sbom: true
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+      - name: Scan image (fail on CRITICAL)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ env.ACR }}/${{ matrix.service.name }}:${{ github.sha }}
+          severity: CRITICAL
+          exit-code: '1'
+          ignore-unfixed: true
+
+  deploy-dev:
+    needs: images
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - uses: azure/aks-set-context@v4
+        with: { resource-group: '${{ env.AKS_RG }}', cluster-name: '${{ env.AKS_NAME }}' }
+      - name: Pin images by digest (build once, deploy many)
+        working-directory: deploy/k8s/overlays/prod
+        run: |
+          for s in gateway claims-api disruption-api notification-api copilot-api search-api; do
+            digest=$(az acr repository show -n "${ACR%%.*}" --image "$s:${{ github.sha }}" --query digest -o tsv)
+            kustomize edit set image "reroute/$s=$ACR/$s@$digest"
+          done
+      - name: Run DB migrations first (expand/contract — old pods keep working)
+        run: |
+          kubectl -n reroute delete job claims-migrations --ignore-not-found
+          kubectl kustomize deploy/k8s/overlays/prod | yq 'select(.kind == "Job")' | kubectl apply -f -
+          kubectl -n reroute wait --for=condition=complete job/claims-migrations --timeout=300s
+      - name: Apply & wait for rollout
+        run: |
+          kubectl apply -k deploy/k8s/overlays/prod
+          for s in gateway claims-api disruption-api notification-api copilot-api search-api; do
+            kubectl -n reroute rollout status deploy/$s --timeout=300s
+          done
+      - name: Smoke test (auto-rollback on failure)
+        run: |
+          if ! curl -fsS --retry 5 --retry-delay 5 "${{ vars.DEV_BASE_URL }}/health/ready"; then
+            for s in gateway claims-api disruption-api notification-api copilot-api search-api; do kubectl -n reroute rollout undo deploy/$s; done
+            exit 1
+          fi
+
+  deploy-web:
+    needs: deploy-dev
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: npm, cache-dependency-path: web/package-lock.json }
+      - run: npm ci --no-audit --no-fund && npm run build
+        working-directory: web
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ vars.WEB_APP_NAME }}
+          package: web/dist
+
+  deploy-prod:
+    needs: [deploy-dev, deploy-web]
+    runs-on: ubuntu-latest
+    environment: prod          # GitHub Environment with required reviewers = manual approval gate
+    steps:
+      - run: echo "Promote the SAME image digests to the prod cluster (same steps as deploy-dev with prod vars)."

@@ -1,0 +1,26 @@
+# Local cluster (kind/k3d) pointing at docker-compose infrastructure on the host.
+#   kind create cluster && kubectl apply -k deploy/k8s/overlays/dev
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources: [../../base]
+patches:
+  - target: { kind: HorizontalPodAutoscaler }
+    patch: |-
+      - { op: replace, path: /spec/minReplicas, value: 1 }
+  - target: { kind: Deployment }
+    patch: |-
+      - { op: replace, path: /spec/replicas, value: 1 }
+  - target: { kind: ConfigMap, name: reroute-common }
+    patch: |-
+      - { op: replace, path: /data/ASPNETCORE_ENVIRONMENT, value: Docker }
+      - { op: replace, path: /data/Auth__Authority, value: "http://host.docker.internal:8081/realms/reroute" }
+      - { op: replace, path: /data/Kafka__BootstrapServers, value: "host.docker.internal:9092" }
+      - { op: remove, path: /data/Kafka__SecurityProtocol }
+      - { op: remove, path: /data/Kafka__SaslMechanism }
+      - { op: remove, path: /data/Kafka__SaslUsername }
+      - { op: replace, path: /data/Messaging__Transport, value: RabbitMq }
+secretGenerator:
+  - name: claims-secrets
+    literals:
+      - claims-db=Server=host.docker.internal,1433;Database=claims;User Id=sa;Password=Reroute_dev_Pa55!;TrustServerCertificate=True
+generatorOptions: { disableNameSuffixHash: true }
