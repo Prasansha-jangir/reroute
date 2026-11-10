@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 # Build context: repository root  →  docker build -f src/Services/Claims/Reroute.Claims.Api/Dockerfile .
 
-FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+FROM mcr.microsoft.com/dotnet/sdk:11.0 AS build
 WORKDIR /src
 
 # 1) Restore layer: copy only build metadata + project files so `dotnet restore` is cached until dependencies change.
